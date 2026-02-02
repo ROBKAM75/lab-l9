@@ -1,0 +1,21 @@
+{
+  "name": "lab-l9",
+  "version": "1.0.0",
+  "description": "Lab L-9: User Authentication App",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "authserver"
+  ],
+  "scripts": {
+    "lars": "lars",
+    "lars:config": "lars config",
+    "start": "lars start",
+    "build": "cd frontend && npm run build && cd ../authserver && npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@bsv/lars": "^1.5.0",
+    "@bsv/sdk": "^1.5.2"
+  }
+}
