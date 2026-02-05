@@ -79,6 +79,7 @@ async function startServer() {
       const signatureHex = req.headers['x-bsv-auth-signature'] as string
       const messageB64 = req.headers['x-bsv-auth-message'] as string
       const timestamp = req.headers['x-bsv-auth-timestamp'] as string
+      const keyID = req.headers['x-bsv-auth-key-id'] as string || '1'
 
       // Check if all required headers are present
       if (!identityKey || !signatureHex || !messageB64) {
@@ -110,8 +111,8 @@ async function startServer() {
         const verifyResult = await verifyWallet.verifySignature({
           data: messageBytes,
           signature: signatureBytes,
-          protocolID: [0, 'authentication'],
-          keyID: '1',
+          protocolID: [2, 'lab L9 auth'],
+          keyID: keyID,
           counterparty: identityKey,
           forSelf: false
         })

@@ -52,11 +52,13 @@ const App: React.FC = () => {
       const messageToSign = JSON.stringify(requestData)
 
       // Step 4: Sign the message (Metanet Client will ask for permission)
+      // Using security level 2 and unique keyID to ensure wallet prompts for approval
       const messageBytes = new TextEncoder().encode(messageToSign)
+      const uniqueKeyID = `auth-${Date.now()}`
       const signResult = await wallet.createSignature({
         data: Array.from(messageBytes),
-        protocolID: [0, 'authentication'],
-        keyID: '1',
+        protocolID: [2, 'lab L9 auth'],
+        keyID: uniqueKeyID,
         counterparty: 'anyone'
       })
 
@@ -77,7 +79,8 @@ const App: React.FC = () => {
           'x-bsv-auth-identity-key': publicKey,
           'x-bsv-auth-signature': signatureHex,
           'x-bsv-auth-message': btoa(messageToSign),
-          'x-bsv-auth-timestamp': timestamp.toString()
+          'x-bsv-auth-timestamp': timestamp.toString(),
+          'x-bsv-auth-key-id': uniqueKeyID
         }
       })
 
