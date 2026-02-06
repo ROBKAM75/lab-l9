@@ -1,21 +1,13 @@
 {
+  "schema": "bsv-app",
+  "schemaVersion": "1.0",
   "name": "Lab L-9 User Authentication App",
   "description": "Lab L-9: Implementing User Authentication in a Blockchain Application",
   "version": "1.0.0",
-  "moduleType": "package",
   "author": "Rob",
   "frontend": {
-    "packagePath": "frontend"
-  },
-  "docker": {
-    "services": {
-      "authserver": {
-        "packagePath": "backend",
-        "port": 3000,
-        "protocol": "http",
-        "domain": "localhost"
-      }
-    }
+    "language": "react",
+    "sourceDirectory": "./frontend"
   },
   "configs": [
     {
@@ -23,8 +15,8 @@
       "network": "testnet",
       "provider": "LARS",
       "run": [
-        "backend",
-        "frontend"
+        "frontend",
+        "authserver"
       ]
     }
   ]
