@@ -5,13 +5,13 @@
   "private": true,
   "workspaces": [
     "frontend",
-    "authserver"
+    "backend"
   ],
   "scripts": {
     "lars": "lars",
     "lars:config": "lars config",
-    "start": "lars start",
-    "build": "cd frontend && npm run build && cd ../authserver && npm run build",
+    "start": "npm --prefix backend run start & AUTHSERVER_PID=$!; npm --prefix frontend run start & FRONTEND_PID=$!; trap 'kill $AUTHSERVER_PID $FRONTEND_PID' INT TERM EXIT; lars start",
+    "build": "cd frontend && npm run build && cd ../backend && npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {

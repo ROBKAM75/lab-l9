@@ -16,7 +16,7 @@
       "provider": "LARS",
       "run": [
         "frontend",
-        "authserver"
+        "backend"
       ]
     }
   ]

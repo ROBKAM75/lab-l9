@@ -1,102 +1,73 @@
-import express from 'express'
+import express, { Request, Response, NextFunction, RequestHandler } from 'express'
 import bodyParser from 'body-parser'
 import dotenv from 'dotenv'
-import { PrivateKey } from '@bsv/sdk'
-import type { Request, Response, NextFunction } from 'express'
+import { Setup, sdk } from '@bsv/wallet-toolbox'
+import { createAuthMiddleware, AuthRequest } from '@bsv/auth-express-middleware'
+import { PubKeyHex, VerifiableCertificate } from '@bsv/sdk'
 
-const app = express();
-app.use(bodyParser.json());
+const app = express()
+app.use(bodyParser.json())
 
-// Load environment variables from .env file
-dotenv.config();
+// Load environment variables
+dotenv.config()
 
-// Log ALL incoming requests
-app.use((req: Request, res: Response, next: NextFunction) => {
-  console.log(`\n📥 ${req.method} ${req.path}`);
-  console.log('Origin:', req.headers.origin);
-  next();
-});
+async function startServer() {
+  // Initialize a BSV wallet to manage transactions
+  // Load the key from a .env file using dotenv
+  const serverPrivateKey = process.env.SERVER_PRIVATE_KEY
+  if (!serverPrivateKey) {
+    console.error('ERROR: SERVER_PRIVATE_KEY not found in .env file')
+    process.exit(1)
+  }
 
-const serverPrivateKeyHex = process.env.SERVER_PRIVATE_KEY;
-if (!serverPrivateKeyHex) {
-  throw new Error('SERVER_PRIVATE_KEY not found');
+  const wallet = await Setup.createWalletClientNoEnv({
+    chain: 'test',
+    rootKeyHex: serverPrivateKey
+  })
+
+  // Configure the Auth middleware
+  const authMiddleware = createAuthMiddleware({
+    wallet,
+    allowUnauthenticated: false
+  })
+
+  // Enable CORS for frontend-backend communication
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Headers', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    res.setHeader('Access-Control-Expose-Headers', '*')
+    res.setHeader('Access-Control-Allow-Private-Network', 'true')
+
+    if (req.method === 'OPTIONS') {
+      res.status(200).end()
+      return
+    }
+    next()
+  })
+
+  // Apply the auth middleware to all routes
+  app.use(authMiddleware)
+
+  // Configure a non-protected route
+  app.get('/', (req: Request, res: Response) => {
+    res.send('Hello, world!')
+  })
+
+  // Configure a protected route
+  app.get('/protected', (req: Request, res: Response) => {
+    const authReq = req as AuthRequest
+    if (authReq.auth && authReq.auth.identityKey) {
+      res.send(`Hello, authenticated peer with public key: ${authReq.auth.identityKey}`)
+    } else {
+      res.status(401).send('Unauthorized')
+    }
+  })
+
+  // Start the server on port 3000
+  app.listen(3000, () => {
+    console.log('Server is running on port 3000')
+  })
 }
 
-const serverPrivateKey = PrivateKey.fromString(serverPrivateKeyHex, 'hex');
-
-// Simple custom auth middleware - checks for authentication headers
-const authMiddleware = (req: any, res: Response, next: NextFunction) => {
-  console.log('\n🔐 AUTH MIDDLEWARE CHECK:');
-  
-  const identityKey = req.headers['x-authrite-identity-key'];
-  const signatureHex = req.headers['x-authrite'];
-  const message = req.headers['x-authrite-message'];
-  
-  console.log('🔑 Identity Key:', identityKey);
-  console.log('✍️ Signature:', signatureHex?.substring(0, 32) + '...');
-  console.log('📝 Message:', message);
-  
-  // If authentication headers are present, accept the request
-  if (identityKey && signatureHex && message) {
-    req.identityKey = identityKey;
-    console.log('✅ Authenticated request with REAL CRYPTO from:', identityKey);
-    next();
-  } else {
-    console.log('❌ Unauthorized request - missing auth headers');
-    res.status(401).send('Unauthorized');
-  }
-};
-
-// CORS middleware
-app.use((req: Request, res: Response, next: NextFunction) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-authrite, x-authrite-identity-key, x-authrite-certificates, x-authrite-message');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Expose-Headers', 'x-authrite, x-authrite-identity-key, x-authrite-certificates');
-  res.setHeader('Access-Control-Allow-Private-Network', 'true');
-  
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-  
-  next();
-});
-
-// Routes
-app.get('/', (req: Request, res: Response) => {
-  res.send('Hello, world!');
-});
-
-// Authentication handshake endpoint
-app.post('/.well-known/auth', (req: Request, res: Response) => {
-  const identityKey = req.body?.identityKey || req.headers['x-authrite-identity-key'] || 'authenticated-user';
-  
-  console.log('🔐 Auth handshake received from:', identityKey);
-  
-  res.setHeader('x-authrite', 'accepted');
-  res.setHeader('x-authrite-identity-key', identityKey);
-  res.status(200).json({
-    status: 'success',
-    identityKey: identityKey
-  });
-});
-
-// Protected route - middleware applied ONLY to this route
-app.get('/protected', authMiddleware, (req: any, res: Response) => {
-  const identityKey = req.identityKey;
-  
-  if (identityKey) {
-    res.send(`Hello, authenticated peer with public key: ${identityKey}`);
-  } else {
-    res.status(401).send('Unauthorized');
-  }
-});
-
-// Start server
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`Try accessing: http://localhost:3000/`);
-});
+startServer()
