@@ -10,7 +10,9 @@
   "scripts": {
     "lars": "lars",
     "lars:config": "lars config",
-    "start": "node start.js",
+    "prestart": "node setup.js",
+    "start": "lars start",
+    "start:all": "node start.js",
     "build": "cd frontend && npm run build && cd ../backend && npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

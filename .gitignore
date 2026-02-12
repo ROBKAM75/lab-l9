@@ -40,3 +40,9 @@ local-data/
 
 # PDFs (assignment files)
 *.pdf
+
+# Images (assignment screenshots)
+*.jpg
+
+# Claude Code
+.claude/
