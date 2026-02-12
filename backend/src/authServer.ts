@@ -21,7 +21,7 @@ async function startServer() {
   }
 
   const wallet = await Setup.createWalletClientNoEnv({
-    chain: 'test',
+    chain: 'main',
     rootKeyHex: serverPrivateKey
   })
 

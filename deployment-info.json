@@ -12,7 +12,7 @@
   "configs": [
     {
       "name": "Local LARS",
-      "network": "testnet",
+      "network": "mainnet",
       "provider": "LARS",
       "run": [
         "frontend",
