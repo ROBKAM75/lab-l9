@@ -22,6 +22,9 @@ build/
 .DS_Store
 Thumbs.db
 
+# Local npm config (platform-specific)
+.npmrc
+
 # Logs
 *.log
 npm-debug.log*
