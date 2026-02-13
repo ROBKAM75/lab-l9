@@ -1,4 +1,4 @@
-const { spawn, execSync } = require('child_process')
+const { spawn, spawnSync, execSync } = require('child_process')
 const net = require('net')
 
 // Run setup (auto-create .env and lars-config.json)
@@ -14,67 +14,76 @@ function checkPort(port) {
   })
 }
 
-// Stop and remove all Docker containers
-function cleanDocker() {
+// Kill whatever is using a port (node, Docker, anything)
+function freePort(port) {
+  // Try killing Docker containers first
   try {
     const ids = execSync('docker ps -aq', { encoding: 'utf8' }).trim()
     if (ids) {
-      console.log('Stopping old Docker containers...')
+      console.log('  Stopping Docker containers...')
       execSync('docker kill ' + ids.split('\n').join(' '), { stdio: 'ignore' })
       execSync('docker rm ' + ids.split('\n').join(' '), { stdio: 'ignore' })
-      console.log('Old containers removed.')
     }
-  } catch (e) {
-    // Docker not running or no containers — that's fine
+  } catch (e) {}
+
+  // Then try killing the specific process on the port (Windows)
+  if (process.platform === 'win32') {
+    try {
+      const output = execSync(`netstat -ano | findstr :${port} | findstr LISTENING`, { encoding: 'utf8' })
+      for (const line of output.trim().split('\n')) {
+        const pid = line.trim().split(/\s+/).pop()
+        if (pid && pid !== '0') {
+          execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' })
+        }
+      }
+    } catch (e) {}
   }
 }
 
 async function main() {
-  // Check critical ports, auto-clean Docker if blocked
+  // Check and free critical ports
   const ports = [3000, 8080]
   for (const port of ports) {
-    const available = await checkPort(port)
+    let available = await checkPort(port)
     if (!available) {
-      console.log(`Port ${port} is in use. Cleaning up Docker containers...`)
-      cleanDocker()
-      // Check again after cleanup
-      const retry = await checkPort(port)
-      if (!retry) {
-        console.error(`ERROR: Port ${port} is still in use after cleanup.`)
-        console.error('Something else is using this port. Check with:')
+      console.log(`Port ${port} is in use. Cleaning up...`)
+      freePort(port)
+      await new Promise(r => setTimeout(r, 1000))
+      available = await checkPort(port)
+      if (!available) {
+        console.error(`ERROR: Port ${port} is still in use.`)
         console.error(`  netstat -ano | findstr :${port}`)
         process.exit(1)
       }
     }
   }
-  console.log('Ports 3000 and 8080 are available.')
+  console.log('Ports 3000 and 8080 are available.\n')
 
-  // Start backend (no stdin — it doesn't need interactive input)
-  const backend = spawn('npm', ['--prefix', 'backend', 'run', 'start'], {
+  // Start backend in background (detached, no stdin, cwd=backend/)
+  const path = require('path')
+  const backend = spawn('npm', ['run', 'start'], {
+    cwd: path.join(__dirname, 'backend'),
     stdio: ['ignore', 'inherit', 'inherit'],
-    shell: true
+    shell: true,
+    detached: true
   })
+  backend.unref()
 
-  // Start LARS with full stdin (needs it for interactive prompts like funding)
-  const lars = spawn('npx', ['lars', 'start'], {
+  // Run LARS in foreground (blocking — full terminal control for interactive prompts)
+  spawnSync('npx', ['lars', 'start'], {
     stdio: 'inherit',
     shell: true
   })
 
-  // Cleanup all child processes on exit
-  function cleanup() {
-    backend.kill()
-    lars.kill()
-    process.exit()
-  }
-
-  process.on('SIGINT', cleanup)
-  process.on('SIGTERM', cleanup)
-
-  lars.on('close', () => {
-    backend.kill()
-    process.exit()
-  })
+  // LARS exited — clean up backend
+  console.log('\nLARS stopped. Cleaning up...')
+  try {
+    if (process.platform === 'win32') {
+      execSync(`taskkill /F /T /PID ${backend.pid}`, { stdio: 'ignore' })
+    } else {
+      process.kill(-backend.pid)
+    }
+  } catch (e) {}
 }
 
 main()
