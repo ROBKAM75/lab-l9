@@ -1,4 +1,4 @@
-const { spawn } = require('child_process')
+const { spawn, execSync } = require('child_process')
 const net = require('net')
 
 // Run setup (auto-create .env and lars-config.json)
@@ -14,17 +14,37 @@ function checkPort(port) {
   })
 }
 
+// Stop and remove all Docker containers
+function cleanDocker() {
+  try {
+    const ids = execSync('docker ps -aq', { encoding: 'utf8' }).trim()
+    if (ids) {
+      console.log('Stopping old Docker containers...')
+      execSync('docker kill ' + ids.split('\n').join(' '), { stdio: 'ignore' })
+      execSync('docker rm ' + ids.split('\n').join(' '), { stdio: 'ignore' })
+      console.log('Old containers removed.')
+    }
+  } catch (e) {
+    // Docker not running or no containers — that's fine
+  }
+}
+
 async function main() {
-  // Check critical ports before starting
+  // Check critical ports, auto-clean Docker if blocked
   const ports = [3000, 8080]
   for (const port of ports) {
     const available = await checkPort(port)
     if (!available) {
-      console.error(`ERROR: Port ${port} is already in use.`)
-      console.error('Run this to free all ports:')
-      console.error('  taskkill /F /IM node.exe   (Windows)')
-      console.error('  docker ps -aq | xargs docker stop   (Docker)')
-      process.exit(1)
+      console.log(`Port ${port} is in use. Cleaning up Docker containers...`)
+      cleanDocker()
+      // Check again after cleanup
+      const retry = await checkPort(port)
+      if (!retry) {
+        console.error(`ERROR: Port ${port} is still in use after cleanup.`)
+        console.error('Something else is using this port. Check with:')
+        console.error(`  netstat -ano | findstr :${port}`)
+        process.exit(1)
+      }
     }
   }
   console.log('Ports 3000 and 8080 are available.')
