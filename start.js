@@ -49,13 +49,13 @@ async function main() {
   }
   console.log('Ports 3000 and 8080 are available.')
 
-  // Start backend (Express auth server on port 3000)
+  // Start backend (no stdin — it doesn't need interactive input)
   const backend = spawn('npm', ['--prefix', 'backend', 'run', 'start'], {
-    stdio: 'inherit',
+    stdio: ['ignore', 'inherit', 'inherit'],
     shell: true
   })
 
-  // Start LARS (handles frontend + Docker services on port 8080)
+  // Start LARS with full stdin (needs it for interactive prompts like funding)
   const lars = spawn('npx', ['lars', 'start'], {
     stdio: 'inherit',
     shell: true
