@@ -1,5 +1,6 @@
 const { spawn, spawnSync, execSync } = require('child_process')
 const net = require('net')
+const path = require('path')
 
 // Run setup (auto-create .env and lars-config.json)
 require('./setup.js')
@@ -14,9 +15,25 @@ function checkPort(port) {
   })
 }
 
+// Wait until a port is occupied (service is up)
+function waitForPort(port, timeoutMs) {
+  return new Promise((resolve) => {
+    const start = Date.now()
+    const check = () => {
+      const socket = new net.Socket()
+      socket.once('connect', () => { socket.destroy(); resolve(true) })
+      socket.once('error', () => {
+        if (Date.now() - start > timeoutMs) return resolve(false)
+        setTimeout(check, 500)
+      })
+      socket.connect(port, '127.0.0.1')
+    }
+    check()
+  })
+}
+
 // Kill whatever is using a port (node, Docker, anything)
 function freePort(port) {
-  // Try killing Docker containers first
   try {
     const ids = execSync('docker ps -aq', { encoding: 'utf8' }).trim()
     if (ids) {
@@ -25,10 +42,9 @@ function freePort(port) {
       execSync('docker rm ' + ids.split('\n').join(' '), { stdio: 'ignore' })
     }
   } catch (e) {}
-
-  // Then try killing the specific process on the port (Windows)
-  if (process.platform === 'win32') {
-    try {
+  // Kill the specific process on the port
+  try {
+    if (process.platform === 'win32') {
       const output = execSync(`netstat -ano | findstr :${port} | findstr LISTENING`, { encoding: 'utf8' })
       for (const line of output.trim().split('\n')) {
         const pid = line.trim().split(/\s+/).pop()
@@ -36,8 +52,14 @@ function freePort(port) {
           execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' })
         }
       }
-    } catch (e) {}
-  }
+    } else {
+      // Mac/Linux
+      const output = execSync(`lsof -ti :${port}`, { encoding: 'utf8' })
+      for (const pid of output.trim().split('\n')) {
+        if (pid) execSync(`kill -9 ${pid}`, { stdio: 'ignore' })
+      }
+    }
+  } catch (e) {}
 }
 
 async function main() {
@@ -59,17 +81,36 @@ async function main() {
   }
   console.log('Ports 3000 and 8080 are available.\n')
 
-  // Start backend in background (detached, no stdin, cwd=backend/)
-  const path = require('path')
-  const backend = spawn('npm', ['run', 'start'], {
+  // Step 1: Compile backend synchronously
+  console.log('Compiling backend...')
+  const tsc = spawnSync('npx', ['tsc'], {
+    cwd: path.join(__dirname, 'backend'),
+    stdio: 'inherit',
+    shell: true
+  })
+  if (tsc.status !== 0) {
+    console.error('Backend compilation failed.')
+    process.exit(1)
+  }
+
+  // Step 2: Start backend server (non-blocking)
+  console.log('Starting backend server...')
+  const backend = spawn('node', ['dist/src/authServer.js'], {
     cwd: path.join(__dirname, 'backend'),
     stdio: ['ignore', 'inherit', 'inherit'],
-    shell: true,
-    detached: true
+    shell: true
   })
-  backend.unref()
 
-  // Run LARS in foreground (blocking — full terminal control for interactive prompts)
+  // Step 3: Wait for backend to be ready on port 3000
+  const ready = await waitForPort(3000, 15000)
+  if (!ready) {
+    console.error('ERROR: Backend failed to start on port 3000.')
+    backend.kill()
+    process.exit(1)
+  }
+  console.log('Backend is running on port 3000.\n')
+
+  // Step 4: Run LARS in foreground (blocking — full terminal for interactive prompts)
   spawnSync('npx', ['lars', 'start'], {
     stdio: 'inherit',
     shell: true
@@ -77,11 +118,10 @@ async function main() {
 
   // LARS exited — clean up backend
   console.log('\nLARS stopped. Cleaning up...')
+  backend.kill()
   try {
     if (process.platform === 'win32') {
       execSync(`taskkill /F /T /PID ${backend.pid}`, { stdio: 'ignore' })
-    } else {
-      process.kill(-backend.pid)
     }
   } catch (e) {}
 }
